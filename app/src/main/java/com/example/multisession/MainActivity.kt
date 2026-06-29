@@ -3,6 +3,7 @@ package com.example.multisession
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -11,6 +12,7 @@ import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.webkit.CookieManager
@@ -74,7 +76,7 @@ class SessionAdapter(
         val tvId: TextView = view.findViewById(R.id.tvProfileId)
         val tvUrl: TextView = view.findViewById(R.id.tvProfileUrl)
         val tvDate: TextView = view.findViewById(R.id.tvProfileDate)
-        val btnEdit: TextView = view.findViewById(R.id.btnEditProfile)
+        val btnEdit: View = view.findViewById(R.id.btnEditContainer)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = ViewHolder(
@@ -116,7 +118,7 @@ class DrawerNavAdapter(
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val tvName: TextView = view.findViewById(R.id.tvDrawerName)
         val tvUrl: TextView = view.findViewById(R.id.tvDrawerUrl)
-        val container: View = view
+        val container: LinearLayout = view.findViewById(R.id.drawerItemContainer)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = ViewHolder(
@@ -128,12 +130,18 @@ class DrawerNavAdapter(
         holder.tvName.text = p.name
         holder.tvUrl.text = p.startUrl
         
+        val bgDrawable = GradientDrawable().apply { cornerRadius = 32f }
+        
         if (p.id == currentId) {
-            holder.container.setBackgroundColor(Color.parseColor("#EFF6FF"))
-            holder.tvName.setTextColor(Color.parseColor("#2563EB"))
+            bgDrawable.setColor(Color.parseColor("#0F172A"))
+            holder.container.background = bgDrawable
+            holder.tvName.setTextColor(Color.WHITE)
+            holder.tvUrl.setTextColor(Color.parseColor("#94A3B8"))
         } else {
-            holder.container.setBackgroundColor(Color.TRANSPARENT)
+            bgDrawable.setColor(Color.TRANSPARENT)
+            holder.container.background = bgDrawable
             holder.tvName.setTextColor(Color.parseColor("#0F172A"))
+            holder.tvUrl.setTextColor(Color.parseColor("#64748B"))
         }
         
         holder.itemView.setOnClickListener { if (p.id != currentId) onClick(p) }
@@ -142,13 +150,21 @@ class DrawerNavAdapter(
     override fun getItemCount() = profiles.size
 }
 
+fun AppCompatActivity.setupTransparentStatusBar() {
+    window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+    window.statusBarColor = Color.parseColor("#F8FAFC")
+    window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+}
+
 class MainActivity : AppCompatActivity() {
     private lateinit var manager: SessionManager
     private lateinit var adapter: SessionAdapter
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        setupTransparentStatusBar()
         setContentView(R.layout.activity_main)
+        
         manager = SessionManager(this)
         
         val rv = findViewById<RecyclerView>(R.id.recyclerViewProfiles)
@@ -202,10 +218,16 @@ class MainActivity : AppCompatActivity() {
     private fun showAddDialog() {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(48, 32, 48, 32)
+            setPadding(64, 48, 64, 24)
         }
-        val etName = EditText(this).apply { hint = "Nama Akun (Wajib)" }
-        val etUrl = EditText(this).apply { hint = "Start URL (Opsional)" }
+        val etName = EditText(this).apply { 
+            hint = "Nama Akun (Wajib)" 
+            setPadding(0, 32, 0, 32)
+        }
+        val etUrl = EditText(this).apply { 
+            hint = "Start URL (Opsional)" 
+            setPadding(0, 32, 0, 32)
+        }
         layout.addView(etName)
         layout.addView(etUrl)
 
@@ -239,10 +261,16 @@ class MainActivity : AppCompatActivity() {
     private fun showEditDialog(profile: SessionProfile) {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(48, 32, 48, 32)
+            setPadding(64, 48, 64, 24)
         }
-        val etName = EditText(this).apply { setText(profile.name) }
-        val etUrl = EditText(this).apply { setText(profile.startUrl) }
+        val etName = EditText(this).apply { 
+            setText(profile.name)
+            setPadding(0, 32, 0, 32)
+        }
+        val etUrl = EditText(this).apply { 
+            setText(profile.startUrl)
+            setPadding(0, 32, 0, 32)
+        }
         layout.addView(etName)
         layout.addView(etUrl)
         
@@ -272,6 +300,8 @@ class BrowserActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        setupTransparentStatusBar()
+        
         val sessionId = intent.getStringExtra("SESSION_ID") ?: "default"
         val startUrl = intent.getStringExtra("START_URL") ?: "https://www.google.com"
         val ua = intent.getStringExtra("CUSTOM_UA")
