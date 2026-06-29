@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="12dp"
+    app:cardCornerRadius="16dp"
+    app:cardElevation="1dp"
+    app:cardBackgroundColor="#FFFFFF"
+    app:strokeWidth="1dp"
+    app:strokeColor="#F1F5F9">
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="20dp">
+        <TextView
+            android:id="@+id/tvProfileName"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="#0F172A"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toStartOf="@id/btnEditProfile" />
+        <TextView
+            android:id="@+id/tvProfileId"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:textSize="13sp"
+            android:layout_marginTop="4dp"
+            android:textColor="#64748B"
+            app:layout_constraintTop_toBottomOf="@id/tvProfileName"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toStartOf="@id/btnEditProfile" />
+        <TextView
+            android:id="@+id/tvProfileUrl"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:textSize="13sp"
+            android:textColor="#3B82F6"
+            app:layout_constraintTop_toBottomOf="@id/tvProfileId"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toStartOf="@id/btnEditProfile" />
+        <TextView
+            android:id="@+id/tvProfileDate"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:textSize="11sp"
+            android:layout_marginTop="8dp"
+            android:textColor="#94A3B8"
+            app:layout_constraintTop_toBottomOf="@id/tvProfileUrl"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toStartOf="@id/btnEditProfile" />
+        <TextView
+            android:id="@+id/btnEditProfile"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="UBAH"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:textColor="#0F172A"
+            android:padding="8dp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+    </androidx.constraintlayout.widget.ConstraintLayout>
+</com.google.android.material.card.MaterialCardView>
