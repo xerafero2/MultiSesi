@@ -1,0 +1,367 @@
+package com.example.multisession
+
+import android.content.Context
+import android.content.Intent
+import android.graphics.Color
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
+import android.webkit.CookieManager
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.widget.EditText
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.GravityCompat
+import androidx.drawerlayout.widget.DrawerLayout
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.floatingactionbutton.FloatingActionButton
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.UUID
+import kotlin.system.exitProcess
+
+data class SessionProfile(
+    val id: String, 
+    var name: String,
+    var startUrl: String,
+    val customUserAgent: String, 
+    val dateAdded: Long = System.currentTimeMillis()
+)
+
+class SessionManager(context: Context) {
+    private val prefs = context.getSharedPreferences("SessionData", Context.MODE_PRIVATE)
+    private val gson = Gson()
+
+    fun saveProfile(profile: SessionProfile) {
+        val profiles = getProfiles().toMutableList()
+        val index = profiles.indexOfFirst { it.id == profile.id }
+        if (index != -1) profiles[index] = profile else profiles.add(profile)
+        prefs.edit().putString("PROFILES_LIST", gson.toJson(profiles)).apply()
+    }
+
+    fun getProfiles(): List<SessionProfile> {
+        val json = prefs.getString("PROFILES_LIST", null) ?: return emptyList()
+        return gson.fromJson(json, object : TypeToken<List<SessionProfile>>() {}.type)
+    }
+}
+
+class SessionAdapter(
+    private var allProfiles: List<SessionProfile>,
+    private val onClick: (SessionProfile) -> Unit,
+    private val onEditClick: (SessionProfile) -> Unit
+) : RecyclerView.Adapter<SessionAdapter.ViewHolder>() {
+    
+    private var filteredProfiles = allProfiles.toList()
+    private val dateFormat = SimpleDateFormat("dd MMM yyyy, HH:mm:ss", Locale.getDefault())
+
+    class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+        val tvName: TextView = view.findViewById(R.id.tvProfileName)
+        val tvId: TextView = view.findViewById(R.id.tvProfileId)
+        val tvUrl: TextView = view.findViewById(R.id.tvProfileUrl)
+        val tvDate: TextView = view.findViewById(R.id.tvProfileDate)
+        val btnEdit: TextView = view.findViewById(R.id.btnEditProfile)
+    }
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = ViewHolder(
+        LayoutInflater.from(parent.context).inflate(R.layout.item_session, parent, false)
+    )
+
+    override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+        val profile = filteredProfiles[position]
+        holder.tvName.text = profile.name
+        holder.tvId.text = "ID: ${profile.id}"
+        holder.tvUrl.text = profile.startUrl
+        holder.tvDate.text = dateFormat.format(Date(profile.dateAdded))
+        
+        holder.itemView.setOnClickListener { onClick(profile) }
+        holder.btnEdit.setOnClickListener { onEditClick(profile) }
+    }
+
+    override fun getItemCount() = filteredProfiles.size
+
+    fun updateData(newProfiles: List<SessionProfile>) {
+        allProfiles = newProfiles
+        filteredProfiles = newProfiles.toList()
+        notifyDataSetChanged()
+    }
+
+    fun filter(query: String) {
+        filteredProfiles = if (query.isEmpty()) allProfiles.toList()
+        else allProfiles.filter { it.name.contains(query, ignoreCase = true) || it.id.contains(query, ignoreCase = true) }
+        notifyDataSetChanged()
+    }
+}
+
+class DrawerNavAdapter(
+    private val profiles: List<SessionProfile>,
+    private val currentId: String,
+    private val onClick: (SessionProfile) -> Unit
+) : RecyclerView.Adapter<DrawerNavAdapter.ViewHolder>() {
+
+    class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+        val tvName: TextView = view.findViewById(R.id.tvDrawerName)
+        val tvUrl: TextView = view.findViewById(R.id.tvDrawerUrl)
+        val container: View = view
+    }
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = ViewHolder(
+        LayoutInflater.from(parent.context).inflate(R.layout.item_drawer_session, parent, false)
+    )
+
+    override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+        val p = profiles[position]
+        holder.tvName.text = p.name
+        holder.tvUrl.text = p.startUrl
+        
+        if (p.id == currentId) {
+            holder.container.setBackgroundColor(Color.parseColor("#EFF6FF"))
+            holder.tvName.setTextColor(Color.parseColor("#2563EB"))
+        } else {
+            holder.container.setBackgroundColor(Color.TRANSPARENT)
+            holder.tvName.setTextColor(Color.parseColor("#0F172A"))
+        }
+        
+        holder.itemView.setOnClickListener { if (p.id != currentId) onClick(p) }
+    }
+    
+    override fun getItemCount() = profiles.size
+}
+
+class MainActivity : AppCompatActivity() {
+    private lateinit var manager: SessionManager
+    private lateinit var adapter: SessionAdapter
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
+        manager = SessionManager(this)
+        
+        val rv = findViewById<RecyclerView>(R.id.recyclerViewProfiles)
+        val etSearch = findViewById<EditText>(R.id.etSearchAccount)
+        rv.layoutManager = LinearLayoutManager(this)
+        
+        adapter = SessionAdapter(manager.getProfiles(), onClick = { profile ->
+            launchBrowser(profile)
+        }, onEditClick = { profile ->
+            showEditDialog(profile)
+        })
+        rv.adapter = adapter
+
+        etSearch.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                adapter.filter(s.toString())
+            }
+            override fun afterTextChanged(s: Editable?) {}
+        })
+
+        findViewById<FloatingActionButton>(R.id.fabAddSession).setOnClickListener {
+            showAddDialog()
+        }
+
+        handleIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        intent?.getStringExtra("SWITCH_TO_SESSION")?.let { id ->
+            manager.getProfiles().find { it.id == id }?.let { profile ->
+                launchBrowser(profile)
+            }
+        }
+    }
+
+    private fun launchBrowser(profile: SessionProfile) {
+        val intent = Intent(this, BrowserActivity::class.java).apply {
+            putExtra("SESSION_ID", profile.id)
+            putExtra("START_URL", profile.startUrl)
+            putExtra("CUSTOM_UA", profile.customUserAgent)
+        }
+        startActivity(intent)
+    }
+
+    private fun showAddDialog() {
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 32, 48, 32)
+        }
+        val etName = EditText(this).apply { hint = "Nama Akun (Wajib)" }
+        val etUrl = EditText(this).apply { hint = "Start URL (Opsional)" }
+        layout.addView(etName)
+        layout.addView(etUrl)
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Tambah Akun Baru")
+            .setView(layout)
+            .setPositiveButton("Simpan", null) 
+            .setNegativeButton("Batal", null)
+            .create()
+
+        dialog.show()
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val name = etName.text.toString().trim()
+            var url = etUrl.text.toString().trim()
+            
+            if (name.isEmpty()) {
+                etName.error = "Nama wajib diisi!"
+                return@setOnClickListener
+            }
+            
+            if (url.isEmpty()) url = "https://www.google.com"
+            else if (!url.startsWith("http")) url = "https://$url"
+
+            val id = UUID.randomUUID().toString().substring(0, 8)
+            manager.saveProfile(SessionProfile(id, name, url, ""))
+            adapter.updateData(manager.getProfiles())
+            dialog.dismiss()
+        }
+    }
+
+    private fun showEditDialog(profile: SessionProfile) {
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 32, 48, 32)
+        }
+        val etName = EditText(this).apply { setText(profile.name) }
+        val etUrl = EditText(this).apply { setText(profile.startUrl) }
+        layout.addView(etName)
+        layout.addView(etUrl)
+        
+        AlertDialog.Builder(this)
+            .setTitle("Ubah Data Akun")
+            .setView(layout)
+            .setPositiveButton("Simpan") { _, _ ->
+                val newName = etName.text.toString().trim()
+                var newUrl = etUrl.text.toString().trim()
+                if (newName.isNotEmpty()) {
+                    profile.name = newName
+                    if (newUrl.isNotEmpty() && !newUrl.startsWith("http")) newUrl = "https://$newUrl"
+                    profile.startUrl = newUrl
+                    manager.saveProfile(profile)
+                    adapter.updateData(manager.getProfiles())
+                }
+            }
+            .setNegativeButton("Batal", null)
+            .show()
+    }
+}
+
+class BrowserActivity : AppCompatActivity() {
+    private lateinit var webView: WebView
+    private lateinit var etUrlBar: EditText
+    private lateinit var drawerLayout: DrawerLayout
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val sessionId = intent.getStringExtra("SESSION_ID") ?: "default"
+        val startUrl = intent.getStringExtra("START_URL") ?: "https://www.google.com"
+        val ua = intent.getStringExtra("CUSTOM_UA")
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) WebView.setDataDirectorySuffix(sessionId)
+
+        setContentView(R.layout.activity_browser)
+        webView = findViewById(R.id.webView)
+        etUrlBar = findViewById(R.id.etUrlBar)
+        drawerLayout = findViewById(R.id.drawerLayout)
+        
+        setupDrawer(sessionId)
+
+        findViewById<ImageView>(R.id.btnMenu).setOnClickListener {
+            drawerLayout.openDrawer(GravityCompat.START)
+        }
+
+        webView.settings.apply {
+            javaScriptEnabled = true
+            domStorageEnabled = true
+            databaseEnabled = true
+            if (!ua.isNullOrEmpty()) userAgentString = ua
+        }
+        
+        CookieManager.getInstance().apply {
+            setAcceptCookie(true)
+            setAcceptThirdPartyCookies(webView, true)
+        }
+        
+        webView.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                if (url != null && !etUrlBar.isFocused) etUrlBar.setText(url)
+            }
+        }
+
+        etUrlBar.setOnEditorActionListener { v, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_GO || actionId == EditorInfo.IME_ACTION_SEARCH) {
+                var query = etUrlBar.text.toString().trim()
+                if (query.isNotEmpty()) {
+                    if (!query.startsWith("http://") && !query.startsWith("https://")) {
+                        query = if (query.contains(".") && !query.contains(" ")) "https://$query"
+                        else "https://www.google.com/search?q=${Uri.encode(query)}"
+                    }
+                    webView.loadUrl(query)
+                    val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                    imm.hideSoftInputFromWindow(v.windowToken, 0)
+                    etUrlBar.clearFocus()
+                }
+                true
+            } else false
+        }
+
+        webView.loadUrl(startUrl)
+    }
+
+    private fun setupDrawer(currentSessionId: String) {
+        val rvDrawer = findViewById<RecyclerView>(R.id.rvDrawerNav)
+        rvDrawer.layoutManager = LinearLayoutManager(this)
+        val profiles = SessionManager(this).getProfiles()
+        
+        rvDrawer.adapter = DrawerNavAdapter(profiles, currentSessionId) { targetProfile ->
+            drawerLayout.closeDrawer(GravityCompat.START)
+            val intent = Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                putExtra("SWITCH_TO_SESSION", targetProfile.id)
+            }
+            startActivity(intent)
+            finish()
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        CookieManager.getInstance().flush()
+    }
+
+    override fun onBackPressed() {
+        if (drawerLayout.isDrawerOpen(GravityCompat.START)) {
+            drawerLayout.closeDrawer(GravityCompat.START)
+        } else if (webView.canGoBack()) {
+            webView.goBack() 
+        } else {
+            super.onBackPressed() 
+        }
+    }
+
+    override fun onDestroy() { 
+        CookieManager.getInstance().flush()
+        super.onDestroy() 
+        exitProcess(0) 
+    }
+}
