@@ -3,26 +3,30 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginBottom="12dp"
-    app:cardCornerRadius="16dp"
-    app:cardElevation="1dp"
+    android:layout_marginBottom="16dp"
+    app:cardCornerRadius="24dp"
+    app:cardElevation="2dp"
     app:cardBackgroundColor="#FFFFFF"
     app:strokeWidth="1dp"
-    app:strokeColor="#F1F5F9">
+    app:strokeColor="#E2E8F0">
+
     <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:padding="20dp">
+        android:padding="24dp">
+
         <TextView
             android:id="@+id/tvProfileName"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:textSize="18sp"
+            android:textSize="20sp"
             android:textStyle="bold"
             android:textColor="#0F172A"
+            android:letterSpacing="-0.02"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toStartOf="@id/btnEditProfile" />
+            app:layout_constraintEnd_toStartOf="@id/btnEditContainer" />
+
         <TextView
             android:id="@+id/tvProfileId"
             android:layout_width="0dp"
@@ -32,40 +36,57 @@
             android:textColor="#64748B"
             app:layout_constraintTop_toBottomOf="@id/tvProfileName"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toStartOf="@id/btnEditProfile" />
+            app:layout_constraintEnd_toStartOf="@id/btnEditContainer" />
+
         <TextView
             android:id="@+id/tvProfileUrl"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:textSize="13sp"
-            android:textColor="#3B82F6"
+            android:textColor="#2563EB"
+            android:layout_marginTop="2dp"
             app:layout_constraintTop_toBottomOf="@id/tvProfileId"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toStartOf="@id/btnEditProfile" />
+            app:layout_constraintEnd_toStartOf="@id/btnEditContainer" />
+
         <TextView
             android:id="@+id/tvProfileDate"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:textSize="11sp"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="12dp"
             android:textColor="#94A3B8"
             app:layout_constraintTop_toBottomOf="@id/tvProfileUrl"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toStartOf="@id/btnEditProfile" />
-        <TextView
-            android:id="@+id/btnEditProfile"
+            app:layout_constraintEnd_toStartOf="@id/btnEditContainer" />
+
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/btnEditContainer"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="UBAH"
-            android:textSize="13sp"
-            android:textStyle="bold"
-            android:textColor="#0F172A"
-            android:padding="8dp"
-            android:background="?attr/selectableItemBackground"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="0dp"
+            app:cardBackgroundColor="#F8FAFC"
+            app:strokeWidth="1dp"
+            app:strokeColor="#CBD5E1"
             android:clickable="true"
             android:focusable="true"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toEndOf="parent" />
+            app:layout_constraintEnd_toEndOf="parent">
+            
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="UBAH"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:textColor="#0F172A"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp" />
+        </com.google.android.material.card.MaterialCardView>
+
     </androidx.constraintlayout.widget.ConstraintLayout>
 </com.google.android.material.card.MaterialCardView>
