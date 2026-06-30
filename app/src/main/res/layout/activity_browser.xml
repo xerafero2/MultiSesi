@@ -82,11 +82,17 @@
             android:max="100"
             android:visibility="gone" />
 
-        <WebView
-            android:id="@+id/webView"
+        <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+            android:id="@+id/swipeRefresh"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_weight="1" />
+            android:layout_weight="1">
+            
+            <WebView
+                android:id="@+id/webView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+        </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -168,12 +174,44 @@
             android:layout_height="wrap_content"
             android:paddingStart="24dp"
             android:paddingEnd="24dp"
-            android:paddingTop="16dp"
-            android:paddingBottom="16dp"
+            android:paddingTop="12dp"
+            android:paddingBottom="12dp"
             android:text="← Kembali ke Beranda"
             android:textSize="14sp"
             android:textStyle="bold"
             android:textColor="#2563EB"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true" />
+
+        <TextView
+            android:id="@+id/btnDrawerClearCache"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingStart="24dp"
+            android:paddingEnd="24dp"
+            android:paddingTop="12dp"
+            android:paddingBottom="12dp"
+            android:text="Bersihkan Cache Memori"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="#0F172A"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true" />
+
+        <TextView
+            android:id="@+id/btnDrawerWebRTC"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingStart="24dp"
+            android:paddingEnd="24dp"
+            android:paddingTop="12dp"
+            android:paddingBottom="16dp"
+            android:text="Proteksi WebRTC: AKTIF"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="#10B981"
             android:background="?attr/selectableItemBackground"
             android:clickable="true"
             android:focusable="true" />
