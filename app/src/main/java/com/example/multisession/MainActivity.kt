@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
@@ -17,7 +18,9 @@ import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.webkit.CookieManager
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.EditText
@@ -33,9 +36,11 @@ import androidx.core.view.WindowCompat
 import androidx.drawerlayout.widget.DrawerLayout
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -47,7 +52,8 @@ data class SessionProfile(
     var name: String,
     var startUrl: String,
     val customUserAgent: String, 
-    val dateAdded: Long = System.currentTimeMillis()
+    val dateAdded: Long = System.currentTimeMillis(),
+    var isWebRtcEnabled: Boolean = true
 )
 
 data class HistoryItem(val url: String, val title: String)
@@ -333,10 +339,12 @@ class MainActivity : AppCompatActivity() {
     private fun showDeleteDialog(profile: SessionProfile) {
         AlertDialog.Builder(this)
             .setTitle("Hapus Permanen?")
-            .setMessage("Sesi '${profile.name}' dan semua riwayat penelusurannya akan dihapus.")
+            .setMessage("Sesi '${profile.name}', riwayat, dan seluruh data penyimpanannya akan dihapus secara fisik.")
             .setPositiveButton("Hapus") { _, _ ->
                 manager.deleteProfile(profile.id)
-                HistoryManager(this, profile.id).clearHistory() // Hapus histori juga
+                HistoryManager(this, profile.id).clearHistory() 
+                val webViewDir = File(applicationInfo.dataDir, "app_webview_${profile.id}")
+                if (webViewDir.exists()) webViewDir.deleteRecursively()
                 adapter.updateData(manager.getProfiles())
             }
             .setNegativeButton("Batal", null)
@@ -349,9 +357,14 @@ class BrowserActivity : AppCompatActivity() {
     private lateinit var etUrlBar: EditText
     private lateinit var drawerLayout: DrawerLayout
     private lateinit var historyManager: HistoryManager
+    private lateinit var swipeRefresh: SwipeRefreshLayout
     
     private var pendingAction: String? = null
     private var targetSwitchId: String? = null
+    private var activeProfile: SessionProfile? = null
+
+    private var fileUploadCallback: ValueCallback<Array<Uri>>? = null
+    private val FILE_CHOOSER_REQUEST_CODE = 100
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -362,6 +375,7 @@ class BrowserActivity : AppCompatActivity() {
         val ua = intent.getStringExtra("CUSTOM_UA")
 
         historyManager = HistoryManager(this, sessionId)
+        activeProfile = SessionManager(this).getProfiles().find { it.id == sessionId }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) WebView.setDataDirectorySuffix(sessionId)
 
@@ -369,15 +383,18 @@ class BrowserActivity : AppCompatActivity() {
         webView = findViewById(R.id.webView)
         etUrlBar = findViewById(R.id.etUrlBar)
         drawerLayout = findViewById(R.id.drawerLayout)
+        swipeRefresh = findViewById(R.id.swipeRefresh)
         val progressBar = findViewById<ProgressBar>(R.id.progressBar)
         
         setupDrawer(sessionId)
         setupNavigationButtons()
+        updateWebRtcUi()
+
+        swipeRefresh.setOnRefreshListener { webView.reload() }
 
         findViewById<ImageView>(R.id.btnMenu).setOnClickListener {
             drawerLayout.openDrawer(GravityCompat.START)
         }
-
         findViewById<TextView>(R.id.btnCookie).setOnClickListener {
             extractCookies()
         }
@@ -386,6 +403,7 @@ class BrowserActivity : AppCompatActivity() {
             javaScriptEnabled = true
             domStorageEnabled = true
             databaseEnabled = true
+            allowFileAccess = true
             if (!ua.isNullOrEmpty()) userAgentString = ua
         }
         
@@ -394,23 +412,47 @@ class BrowserActivity : AppCompatActivity() {
             setAcceptThirdPartyCookies(webView, true)
         }
 
-        // WebChromeClient untuk Progress Bar
         webView.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                 super.onProgressChanged(view, newProgress)
                 if (newProgress == 100) {
                     progressBar.visibility = View.GONE
+                    swipeRefresh.isRefreshing = false
                 } else {
                     progressBar.visibility = View.VISIBLE
                     progressBar.progress = newProgress
                 }
             }
+            
+            override fun onShowFileChooser(
+                webView: WebView?, 
+                filePathCallback: ValueCallback<Array<Uri>>?, 
+                fileChooserParams: FileChooserParams?
+            ): Boolean {
+                fileUploadCallback?.onReceiveValue(null)
+                fileUploadCallback = filePathCallback
+                try {
+                    startActivityForResult(fileChooserParams?.createIntent(), FILE_CHOOSER_REQUEST_CODE)
+                } catch (e: Exception) {
+                    fileUploadCallback = null
+                    return false
+                }
+                return true
+            }
         }
         
-        // WebViewClient untuk sinkronisasi URL dan pencatatan Riwayat (History)
         webView.webViewClient = object : WebViewClient() {
+            override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                super.onPageStarted(view, url, favicon)
+                // Injeksi JS untuk memblokir RTCPeerConnection jika proteksi WebRTC aktif
+                if (activeProfile?.isWebRtcEnabled == true) {
+                    view?.evaluateJavascript("['RTCPeerConnection', 'webkitRTCPeerConnection', 'mozRTCPeerConnection'].forEach(function(item) { window[item] = undefined; });", null)
+                }
+            }
+
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
+                swipeRefresh.isRefreshing = false
                 if (url != null && !etUrlBar.isFocused) etUrlBar.setText(url)
             }
 
@@ -420,6 +462,17 @@ class BrowserActivity : AppCompatActivity() {
                     val title = view?.title ?: url
                     historyManager.addHistory(url, title)
                 }
+            }
+
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                val url = request?.url.toString()
+                if (!url.startsWith("http://") && !url.startsWith("https://")) {
+                    try {
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                    } catch (e: Exception) {}
+                    return true
+                }
+                return false
             }
         }
 
@@ -443,6 +496,15 @@ class BrowserActivity : AppCompatActivity() {
         webView.loadUrl(startUrl)
     }
 
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == FILE_CHOOSER_REQUEST_CODE) {
+            val result = if (data == null || resultCode != RESULT_OK) null else data.data?.let { arrayOf(it) }
+            fileUploadCallback?.onReceiveValue(result)
+            fileUploadCallback = null
+        }
+        super.onActivityResult(requestCode, resultCode, data)
+    }
+
     private fun setupNavigationButtons() {
         findViewById<ImageView>(R.id.btnBack).setOnClickListener {
             if (webView.canGoBack()) webView.goBack()
@@ -456,9 +518,38 @@ class BrowserActivity : AppCompatActivity() {
         findViewById<ImageView>(R.id.btnHistory).setOnClickListener {
             showHistoryDialog()
         }
+        
+        val btnWebRTC = findViewById<TextView>(R.id.btnDrawerWebRTC)
+        btnWebRTC.setOnClickListener {
+            activeProfile?.let { profile ->
+                profile.isWebRtcEnabled = !profile.isWebRtcEnabled
+                SessionManager(this).saveProfile(profile)
+                updateWebRtcUi()
+                webView.reload()
+                Toast.makeText(this, "Pengaturan WebRTC diperbarui", Toast.LENGTH_SHORT).show()
+            }
+        }
+        
+        findViewById<TextView>(R.id.btnDrawerClearCache).setOnClickListener {
+            webView.clearCache(true)
+            Toast.makeText(this, "Cache berhasil dibersihkan", Toast.LENGTH_SHORT).show()
+            drawerLayout.closeDrawer(GravityCompat.START)
+        }
+        
         findViewById<TextView>(R.id.btnDrawerHome).setOnClickListener {
             pendingAction = "HOME"
             drawerLayout.closeDrawer(GravityCompat.START)
+        }
+    }
+
+    private fun updateWebRtcUi() {
+        val btnWebRTC = findViewById<TextView>(R.id.btnDrawerWebRTC)
+        if (activeProfile?.isWebRtcEnabled == true) {
+            btnWebRTC.text = "Proteksi WebRTC: AKTIF"
+            btnWebRTC.setTextColor(Color.parseColor("#10B981"))
+        } else {
+            btnWebRTC.text = "Proteksi WebRTC: MATI"
+            btnWebRTC.setTextColor(Color.parseColor("#EF4444"))
         }
     }
 
@@ -511,9 +602,7 @@ class BrowserActivity : AppCompatActivity() {
                             finish()
                         }
                     }
-                    "HOME" -> {
-                        finish()
-                    }
+                    "HOME" -> finish()
                 }
                 pendingAction = null
                 targetSwitchId = null
