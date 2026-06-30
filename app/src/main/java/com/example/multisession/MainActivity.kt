@@ -14,15 +14,16 @@ import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.webkit.CookieManager
+import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -49,6 +50,8 @@ data class SessionProfile(
     val dateAdded: Long = System.currentTimeMillis()
 )
 
+data class HistoryItem(val url: String, val title: String)
+
 class SessionManager(context: Context) {
     private val prefs = context.getSharedPreferences("SessionData", Context.MODE_PRIVATE)
     private val gson = Gson()
@@ -68,6 +71,28 @@ class SessionManager(context: Context) {
     fun getProfiles(): List<SessionProfile> {
         val json = prefs.getString("PROFILES_LIST", null) ?: return emptyList()
         return gson.fromJson(json, object : TypeToken<List<SessionProfile>>() {}.type)
+    }
+}
+
+class HistoryManager(context: Context, sessionId: String) {
+    private val prefs = context.getSharedPreferences("History_$sessionId", Context.MODE_PRIVATE)
+    private val gson = Gson()
+
+    fun addHistory(url: String, title: String) {
+        val list = getHistory().toMutableList()
+        if (list.isNotEmpty() && list.first().url == url) return
+        list.add(0, HistoryItem(url, title))
+        if (list.size > 50) list.removeLast()
+        prefs.edit().putString("HISTORY_LIST", gson.toJson(list)).apply()
+    }
+
+    fun getHistory(): List<HistoryItem> {
+        val json = prefs.getString("HISTORY_LIST", null) ?: return emptyList()
+        return gson.fromJson(json, object : TypeToken<List<HistoryItem>>() {}.type)
+    }
+    
+    fun clearHistory() {
+        prefs.edit().clear().apply()
     }
 }
 
@@ -164,7 +189,7 @@ class DrawerNavAdapter(
 
 fun AppCompatActivity.setupTransparentStatusBar() {
     WindowCompat.setDecorFitsSystemWindows(window, false)
-    window.statusBarColor = Color.parseColor("#F8FAFC")
+    window.statusBarColor = Color.parseColor("#FFFFFF")
     WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = true
 }
 
@@ -311,6 +336,7 @@ class MainActivity : AppCompatActivity() {
             .setMessage("Sesi '${profile.name}' dan semua riwayat penelusurannya akan dihapus.")
             .setPositiveButton("Hapus") { _, _ ->
                 manager.deleteProfile(profile.id)
+                HistoryManager(this, profile.id).clearHistory() // Hapus histori juga
                 adapter.updateData(manager.getProfiles())
             }
             .setNegativeButton("Batal", null)
@@ -322,8 +348,8 @@ class BrowserActivity : AppCompatActivity() {
     private lateinit var webView: WebView
     private lateinit var etUrlBar: EditText
     private lateinit var drawerLayout: DrawerLayout
+    private lateinit var historyManager: HistoryManager
     
-    // Variabel state listener agar tidak terjadi bentrok saat proses isolasi dimatikan
     private var pendingAction: String? = null
     private var targetSwitchId: String? = null
 
@@ -335,12 +361,15 @@ class BrowserActivity : AppCompatActivity() {
         val startUrl = intent.getStringExtra("START_URL") ?: "https://www.google.com"
         val ua = intent.getStringExtra("CUSTOM_UA")
 
+        historyManager = HistoryManager(this, sessionId)
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) WebView.setDataDirectorySuffix(sessionId)
 
         setContentView(R.layout.activity_browser)
         webView = findViewById(R.id.webView)
         etUrlBar = findViewById(R.id.etUrlBar)
         drawerLayout = findViewById(R.id.drawerLayout)
+        val progressBar = findViewById<ProgressBar>(R.id.progressBar)
         
         setupDrawer(sessionId)
         setupNavigationButtons()
@@ -364,11 +393,33 @@ class BrowserActivity : AppCompatActivity() {
             setAcceptCookie(true)
             setAcceptThirdPartyCookies(webView, true)
         }
+
+        // WebChromeClient untuk Progress Bar
+        webView.webChromeClient = object : WebChromeClient() {
+            override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                super.onProgressChanged(view, newProgress)
+                if (newProgress == 100) {
+                    progressBar.visibility = View.GONE
+                } else {
+                    progressBar.visibility = View.VISIBLE
+                    progressBar.progress = newProgress
+                }
+            }
+        }
         
+        // WebViewClient untuk sinkronisasi URL dan pencatatan Riwayat (History)
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 if (url != null && !etUrlBar.isFocused) etUrlBar.setText(url)
+            }
+
+            override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
+                super.doUpdateVisitedHistory(view, url, isReload)
+                if (url != null && !isReload) {
+                    val title = view?.title ?: url
+                    historyManager.addHistory(url, title)
+                }
             }
         }
 
@@ -393,19 +444,44 @@ class BrowserActivity : AppCompatActivity() {
     }
 
     private fun setupNavigationButtons() {
-        findViewById<TextView>(R.id.btnBack).setOnClickListener {
+        findViewById<ImageView>(R.id.btnBack).setOnClickListener {
             if (webView.canGoBack()) webView.goBack()
         }
-        findViewById<TextView>(R.id.btnForward).setOnClickListener {
+        findViewById<ImageView>(R.id.btnForward).setOnClickListener {
             if (webView.canGoForward()) webView.goForward()
         }
-        findViewById<TextView>(R.id.btnRefresh).setOnClickListener {
+        findViewById<ImageView>(R.id.btnRefresh).setOnClickListener {
             webView.reload()
+        }
+        findViewById<ImageView>(R.id.btnHistory).setOnClickListener {
+            showHistoryDialog()
         }
         findViewById<TextView>(R.id.btnDrawerHome).setOnClickListener {
             pendingAction = "HOME"
             drawerLayout.closeDrawer(GravityCompat.START)
         }
+    }
+
+    private fun showHistoryDialog() {
+        val historyList = historyManager.getHistory()
+        if (historyList.isEmpty()) {
+            Toast.makeText(this, "Riwayat masih kosong", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val items = historyList.map { "${it.title}\n${it.url}" }.toTypedArray()
+        
+        AlertDialog.Builder(this)
+            .setTitle("Riwayat Penelusuran Sesi")
+            .setItems(items) { _, which ->
+                webView.loadUrl(historyList[which].url)
+            }
+            .setPositiveButton("Tutup", null)
+            .setNeutralButton("Hapus Riwayat") { _, _ ->
+                historyManager.clearHistory()
+                Toast.makeText(this, "Riwayat dibersihkan", Toast.LENGTH_SHORT).show()
+            }
+            .show()
     }
 
     private fun setupDrawer(currentSessionId: String) {
@@ -419,7 +495,6 @@ class BrowserActivity : AppCompatActivity() {
             drawerLayout.closeDrawer(GravityCompat.START)
         }
 
-        // Pengecekan state murni untuk perpindahan instan (tanpa jeda handler buatan)
         drawerLayout.addDrawerListener(object : DrawerLayout.DrawerListener {
             override fun onDrawerSlide(drawerView: View, slideOffset: Float) {}
             override fun onDrawerOpened(drawerView: View) {}
@@ -453,7 +528,7 @@ class BrowserActivity : AppCompatActivity() {
             return
         }
 
-        val cookies = CookieManager.getInstance().getCookie(currentUrl) ?: "Tidak ada cookie ditemukan untuk sesi ini."
+        val cookies = CookieManager.getInstance().getCookie(currentUrl) ?: "Tidak ada cookie ditemukan."
         
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -469,7 +544,7 @@ class BrowserActivity : AppCompatActivity() {
         }
 
         AlertDialog.Builder(this)
-            .setTitle("Data Cookie Sesi")
+            .setTitle("Cookie (key=value;)")
             .setView(layout)
             .setPositiveButton("Salin") { _, _ ->
                 val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
