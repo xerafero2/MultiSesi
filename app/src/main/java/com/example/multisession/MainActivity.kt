@@ -424,19 +424,29 @@ class BrowserActivity : AppCompatActivity() {
                 }
             }
             
-            override fun onShowFileChooser(
+                        override fun onShowFileChooser(
                 webView: WebView?, 
                 filePathCallback: ValueCallback<Array<Uri>>?, 
                 fileChooserParams: FileChooserParams?
             ): Boolean {
                 fileUploadCallback?.onReceiveValue(null)
                 fileUploadCallback = filePathCallback
-                try {
-                    startActivityForResult(fileChooserParams?.createIntent(), FILE_CHOOSER_REQUEST_CODE)
-                } catch (e: Exception) {
+                
+                val intent = fileChooserParams?.createIntent()
+                if (intent != null) {
+                    try {
+                        startActivityForResult(intent, FILE_CHOOSER_REQUEST_CODE)
+                        return true
+                    } catch (e: Exception) {
+                        fileUploadCallback = null
+                        return false
+                    }
+                } else {
                     fileUploadCallback = null
                     return false
                 }
+            }
+
                 return true
             }
         }
