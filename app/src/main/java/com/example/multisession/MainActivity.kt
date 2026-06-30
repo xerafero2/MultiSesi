@@ -1,5 +1,7 @@
 package com.example.multisession
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
@@ -22,9 +24,11 @@ import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.GravityCompat
+import androidx.core.view.WindowCompat
 import androidx.drawerlayout.widget.DrawerLayout
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -56,6 +60,11 @@ class SessionManager(context: Context) {
         prefs.edit().putString("PROFILES_LIST", gson.toJson(profiles)).apply()
     }
 
+    fun deleteProfile(id: String) {
+        val profiles = getProfiles().filter { it.id != id }
+        prefs.edit().putString("PROFILES_LIST", gson.toJson(profiles)).apply()
+    }
+
     fun getProfiles(): List<SessionProfile> {
         val json = prefs.getString("PROFILES_LIST", null) ?: return emptyList()
         return gson.fromJson(json, object : TypeToken<List<SessionProfile>>() {}.type)
@@ -65,7 +74,8 @@ class SessionManager(context: Context) {
 class SessionAdapter(
     private var allProfiles: List<SessionProfile>,
     private val onClick: (SessionProfile) -> Unit,
-    private val onEditClick: (SessionProfile) -> Unit
+    private val onEditClick: (SessionProfile) -> Unit,
+    private val onDeleteClick: (SessionProfile) -> Unit
 ) : RecyclerView.Adapter<SessionAdapter.ViewHolder>() {
     
     private var filteredProfiles = allProfiles.toList()
@@ -77,6 +87,7 @@ class SessionAdapter(
         val tvUrl: TextView = view.findViewById(R.id.tvProfileUrl)
         val tvDate: TextView = view.findViewById(R.id.tvProfileDate)
         val btnEdit: View = view.findViewById(R.id.btnEditContainer)
+        val btnDelete: View = view.findViewById(R.id.btnDeleteProfile)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = ViewHolder(
@@ -92,6 +103,7 @@ class SessionAdapter(
         
         holder.itemView.setOnClickListener { onClick(profile) }
         holder.btnEdit.setOnClickListener { onEditClick(profile) }
+        holder.btnDelete.setOnClickListener { onDeleteClick(profile) }
     }
 
     override fun getItemCount() = filteredProfiles.size
@@ -151,9 +163,9 @@ class DrawerNavAdapter(
 }
 
 fun AppCompatActivity.setupTransparentStatusBar() {
-    window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+    WindowCompat.setDecorFitsSystemWindows(window, false)
     window.statusBarColor = Color.parseColor("#F8FAFC")
-    window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+    WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = true
 }
 
 class MainActivity : AppCompatActivity() {
@@ -171,11 +183,12 @@ class MainActivity : AppCompatActivity() {
         val etSearch = findViewById<EditText>(R.id.etSearchAccount)
         rv.layoutManager = LinearLayoutManager(this)
         
-        adapter = SessionAdapter(manager.getProfiles(), onClick = { profile ->
-            launchBrowser(profile)
-        }, onEditClick = { profile ->
-            showEditDialog(profile)
-        })
+        adapter = SessionAdapter(
+            allProfiles = manager.getProfiles(), 
+            onClick = { profile -> launchBrowser(profile) }, 
+            onEditClick = { profile -> showEditDialog(profile) },
+            onDeleteClick = { profile -> showDeleteDialog(profile) }
+        )
         rv.adapter = adapter
 
         etSearch.addTextChangedListener(object : TextWatcher {
@@ -291,12 +304,28 @@ class MainActivity : AppCompatActivity() {
             .setNegativeButton("Batal", null)
             .show()
     }
+
+    private fun showDeleteDialog(profile: SessionProfile) {
+        AlertDialog.Builder(this)
+            .setTitle("Hapus Permanen?")
+            .setMessage("Sesi '${profile.name}' dan semua riwayat penelusurannya akan dihapus.")
+            .setPositiveButton("Hapus") { _, _ ->
+                manager.deleteProfile(profile.id)
+                adapter.updateData(manager.getProfiles())
+            }
+            .setNegativeButton("Batal", null)
+            .show()
+    }
 }
 
 class BrowserActivity : AppCompatActivity() {
     private lateinit var webView: WebView
     private lateinit var etUrlBar: EditText
     private lateinit var drawerLayout: DrawerLayout
+    
+    // Variabel state listener agar tidak terjadi bentrok saat proses isolasi dimatikan
+    private var pendingAction: String? = null
+    private var targetSwitchId: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -314,9 +343,14 @@ class BrowserActivity : AppCompatActivity() {
         drawerLayout = findViewById(R.id.drawerLayout)
         
         setupDrawer(sessionId)
+        setupNavigationButtons()
 
         findViewById<ImageView>(R.id.btnMenu).setOnClickListener {
             drawerLayout.openDrawer(GravityCompat.START)
+        }
+
+        findViewById<TextView>(R.id.btnCookie).setOnClickListener {
+            extractCookies()
         }
 
         webView.settings.apply {
@@ -358,20 +392,92 @@ class BrowserActivity : AppCompatActivity() {
         webView.loadUrl(startUrl)
     }
 
+    private fun setupNavigationButtons() {
+        findViewById<TextView>(R.id.btnBack).setOnClickListener {
+            if (webView.canGoBack()) webView.goBack()
+        }
+        findViewById<TextView>(R.id.btnForward).setOnClickListener {
+            if (webView.canGoForward()) webView.goForward()
+        }
+        findViewById<TextView>(R.id.btnRefresh).setOnClickListener {
+            webView.reload()
+        }
+        findViewById<TextView>(R.id.btnDrawerHome).setOnClickListener {
+            pendingAction = "HOME"
+            drawerLayout.closeDrawer(GravityCompat.START)
+        }
+    }
+
     private fun setupDrawer(currentSessionId: String) {
         val rvDrawer = findViewById<RecyclerView>(R.id.rvDrawerNav)
         rvDrawer.layoutManager = LinearLayoutManager(this)
         val profiles = SessionManager(this).getProfiles()
         
         rvDrawer.adapter = DrawerNavAdapter(profiles, currentSessionId) { targetProfile ->
+            pendingAction = "SWITCH"
+            targetSwitchId = targetProfile.id
             drawerLayout.closeDrawer(GravityCompat.START)
-            val intent = Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                putExtra("SWITCH_TO_SESSION", targetProfile.id)
-            }
-            startActivity(intent)
-            finish()
         }
+
+        // Pengecekan state murni untuk perpindahan instan (tanpa jeda handler buatan)
+        drawerLayout.addDrawerListener(object : DrawerLayout.DrawerListener {
+            override fun onDrawerSlide(drawerView: View, slideOffset: Float) {}
+            override fun onDrawerOpened(drawerView: View) {}
+            override fun onDrawerStateChanged(newState: Int) {}
+            override fun onDrawerClosed(drawerView: View) {
+                when (pendingAction) {
+                    "SWITCH" -> {
+                        if (targetSwitchId != null) {
+                            val intent = Intent(this@BrowserActivity, MainActivity::class.java).apply {
+                                flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                                putExtra("SWITCH_TO_SESSION", targetSwitchId)
+                            }
+                            startActivity(intent)
+                            finish()
+                        }
+                    }
+                    "HOME" -> {
+                        finish()
+                    }
+                }
+                pendingAction = null
+                targetSwitchId = null
+            }
+        })
+    }
+
+    private fun extractCookies() {
+        val currentUrl = webView.url
+        if (currentUrl == null) {
+            Toast.makeText(this, "Halaman belum termuat sepenuhnya", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val cookies = CookieManager.getInstance().getCookie(currentUrl) ?: "Tidak ada cookie ditemukan untuk sesi ini."
+        
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 32, 48, 32)
+            addView(EditText(this@BrowserActivity).apply {
+                setText(cookies)
+                background = null
+                textSize = 13f
+                isFocusable = false
+                isCursorVisible = false
+                setPadding(0, 16, 0, 16)
+            })
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Data Cookie Sesi")
+            .setView(layout)
+            .setPositiveButton("Salin") { _, _ ->
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("Cookies", cookies))
+                Toast.makeText(this, "Cookie berhasil disalin", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Tutup", null)
+            .show()
     }
 
     override fun onPause() {
