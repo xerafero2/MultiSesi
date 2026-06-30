@@ -424,7 +424,7 @@ class BrowserActivity : AppCompatActivity() {
                 }
             }
             
-                        override fun onShowFileChooser(
+            override fun onShowFileChooser(
                 webView: WebView?, 
                 filePathCallback: ValueCallback<Array<Uri>>?, 
                 fileChooserParams: FileChooserParams?
@@ -446,15 +446,11 @@ class BrowserActivity : AppCompatActivity() {
                     return false
                 }
             }
-
-                return true
-            }
         }
         
         webView.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                 super.onPageStarted(view, url, favicon)
-                // Injeksi JS untuk memblokir RTCPeerConnection jika proteksi WebRTC aktif
                 if (activeProfile?.isWebRtcEnabled == true) {
                     view?.evaluateJavascript("['RTCPeerConnection', 'webkitRTCPeerConnection', 'mozRTCPeerConnection'].forEach(function(item) { window[item] = undefined; });", null)
                 }
