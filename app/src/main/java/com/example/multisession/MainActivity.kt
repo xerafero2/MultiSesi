@@ -58,7 +58,8 @@ data class SessionProfile(
     val dateAdded: Long = System.currentTimeMillis(),
     var dateUpdated: Long = System.currentTimeMillis(),
     var isWebRtcEnabled: Boolean = true,
-    var startUrl: String = "" // Menjaga kompatibilitas dengan browser
+    var startUrl: String = "",
+    var customUserAgent: String = "" // Ditambahkan kembali untuk mencegah error
 )
 
 data class HistoryItem(val url: String, val title: String)
